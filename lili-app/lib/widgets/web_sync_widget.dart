@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import '../services/history_service.dart';
 import '../theme/app_theme.dart';
 
 class WebSyncWidget extends StatefulWidget {
@@ -35,6 +36,7 @@ class WebSyncWidget extends StatefulWidget {
 class _WebSyncWidgetState extends State<WebSyncWidget> {
   InAppWebViewController? _controller;
   final _urlController = TextEditingController();
+  bool _loading = false;
 
   static const String _injectJs = '''
 (function(){
@@ -52,21 +54,19 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
   function bind(v){
     if(!v || v.__liliBound) return;
     v.__liliBound = true;
-    v.addEventListener('play', function(){ send('play'); });
-    v.addEventListener('pause', function(){ send('pause'); });
+    v.addEventListener('play',   function(){ send('play'); });
+    v.addEventListener('pause',  function(){ send('pause'); });
     v.addEventListener('seeked', function(){ send('seek'); });
   }
-  function scan(){ bind(vid()); }
-  setInterval(scan, 1500);
-  scan();
+  setInterval(function(){ bind(vid()); }, 1500);
+  bind(vid());
   window.__liliApply = function(action, time){
     var v = vid(); if(!v) return;
     window.__liliApplying = true;
     try{
-      if (typeof time === 'number' && time >= 0 && Math.abs(v.currentTime - time) > 1.0) {
+      if (typeof time === 'number' && time >= 0 && Math.abs(v.currentTime - time) > 1.0)
         v.currentTime = time;
-      }
-      if (action === 'play') { var p = v.play(); if (p && p.catch) p.catch(function(){}); }
+      if (action === 'play') { var p = v.play(); if(p && p.catch) p.catch(function(){}); }
       else if (action === 'pause') { v.pause(); }
     }catch(e){}
     setTimeout(function(){ window.__liliApplying = false; }, 800);
@@ -105,7 +105,7 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
 
   void _apply(String action, double time) {
     _controller?.evaluateJavascript(
-      source: "if(window.__liliApply){window.__liliApply('$action', $time);}",
+      source: "if(window.__liliApply){window.__liliApply('$action',$time);}",
     );
   }
 
@@ -125,23 +125,21 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Browser navigation bar ────────────────────────
+        // ── Browser nav bar ──────────────────────────────
         Container(
           color: AppTheme.nightSurface,
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
           child: Row(
             children: [
               _NavBtn(
                 icon: Icons.arrow_back_ios_new,
                 onTap: () async {
-                  if (await _controller?.canGoBack() ?? false) {
-                    _controller?.goBack();
-                  }
+                  if (await _controller?.canGoBack() ?? false) _controller?.goBack();
                 },
               ),
               _NavBtn(
-                icon: Icons.refresh,
-                onTap: () => _controller?.reload(),
+                icon: _loading ? Icons.close : Icons.refresh,
+                onTap: () => _loading ? _controller?.stopLoading() : _controller?.reload(),
               ),
               Expanded(
                 child: Container(
@@ -160,6 +158,7 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: EdgeInsets.symmetric(vertical: 10),
+                      filled: false,
                     ),
                     keyboardType: TextInputType.url,
                     textInputAction: TextInputAction.go,
@@ -171,6 +170,14 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
             ],
           ),
         ),
+
+        // ── Loading indicator ─────────────────────────────
+        if (_loading)
+          LinearProgressIndicator(
+            minHeight: 2,
+            backgroundColor: AppTheme.cardBg,
+            color: AppTheme.rosePink,
+          ),
 
         // ── WebView ───────────────────────────────────────
         Expanded(
@@ -193,26 +200,25 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
                   final action = data['action'] as String?;
                   final time = (data['time'] as num?)?.toDouble() ?? 0;
                   switch (action) {
-                    case 'play':
-                      widget.onPlay(time);
-                      break;
-                    case 'pause':
-                      widget.onPause(time);
-                      break;
-                    case 'seek':
-                      widget.onSeek(time);
-                      break;
+                    case 'play':  widget.onPlay(time);  break;
+                    case 'pause': widget.onPause(time); break;
+                    case 'seek':  widget.onSeek(time);  break;
                   }
                 },
               );
             },
+            onLoadStart: (_, __) => setState(() => _loading = true),
             onLoadStop: (controller, url) async {
               final urlStr = url?.toString() ?? '';
-              if (urlStr.isNotEmpty) {
-                setState(() => _urlController.text = urlStr);
-              }
+              final title  = await controller.getTitle() ?? '';
+              setState(() {
+                _loading = false;
+                if (urlStr.isNotEmpty) _urlController.text = urlStr;
+              });
+              HistoryService.add(urlStr, title);
               await controller.evaluateJavascript(source: _injectJs);
             },
+            onLoadError: (_, __, ___, ____) => setState(() => _loading = false),
           ),
         ),
       ],
@@ -223,7 +229,6 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
 class _NavBtn extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-
   const _NavBtn({required this.icon, required this.onTap});
 
   @override
