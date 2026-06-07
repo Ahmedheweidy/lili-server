@@ -2,9 +2,10 @@ name: Build Flutter APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     paths:
       - 'lili-app/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
