@@ -24,6 +24,7 @@ function getRoom(roomId) {
       currentTime: 0,
       lastUpdate: Date.now(),
       users: new Map(),
+      messages: [],       // last 100 chat messages
     });
   }
   return rooms.get(roomId);
@@ -100,11 +101,12 @@ io.on('connection', (socket) => {
 
     console.log(`${username} joined room "${roomId}"`);
 
-    // ابعت الحالة الحقيقية للداخل الجديد
+    // ابعت الحالة الحقيقية للداخل الجديد (آخر 50 رسالة)
     socket.emit('sync-state', {
       isPlaying: room.isPlaying,
       currentTime: getCurrentTime(room),
       users: [...room.users.values()],
+      messages: room.messages.slice(-50),
     });
 
     socket.to(roomId).emit('user-joined', {
@@ -161,7 +163,29 @@ io.on('connection', (socket) => {
       isPlaying: room.isPlaying,
       currentTime: getCurrentTime(room),
       users: [...room.users.values()],
+      messages: room.messages.slice(-50),
     });
+  });
+
+  // ── Chat ──────────────────────────────────────────────
+  socket.on('chat-message', (data) => {
+    if (!currentRoomId) return;
+    const text = typeof data?.text === 'string' ? data.text.trim().slice(0, 500) : '';
+    if (!text) return;
+
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      username: socket.username,
+      text,
+      timestamp: Date.now(),
+    };
+
+    const room = getRoom(currentRoomId);
+    room.messages.push(message);
+    if (room.messages.length > 100) room.messages.shift();
+
+    console.log(`CHAT  | ${socket.username}: ${text.slice(0, 50)}`);
+    io.to(currentRoomId).emit('chat-message', message);
   });
 
   // الـ client بيبعت الوقت الحالي دوريًا - بنحدث لو الفيديو شغال
