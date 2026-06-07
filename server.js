@@ -173,7 +173,7 @@ io.on('connection', (socket) => {
   // ── Media source (what are we watching) ───────────────
   socket.on('set-source', (data) => {
     if (!currentRoomId) return;
-    const type = ['youtube', 'direct', 'remote'].includes(data?.type) ? data.type : null;
+    const type = ['youtube', 'direct', 'web', 'remote'].includes(data?.type) ? data.type : null;
     if (!type) return;
     const url = typeof data?.url === 'string' ? data.url.trim().slice(0, 1000) : '';
     const title = typeof data?.title === 'string' ? data.title.trim().slice(0, 200) : '';

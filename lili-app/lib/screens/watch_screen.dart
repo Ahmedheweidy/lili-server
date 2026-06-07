@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/youtube_player_widget.dart';
 import '../widgets/remote_sync_widget.dart';
+import '../widgets/web_sync_widget.dart';
 import '../widgets/chat_panel.dart';
 import '../widgets/source_picker.dart';
 
@@ -22,6 +23,7 @@ class WatchScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
     final source = provider.source;
+    final isWeb = source?.type == MediaType.web;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -85,7 +87,11 @@ class WatchScreen extends StatelessWidget {
             ),
 
             // ── Player area ───────────────────────────────
-            _buildPlayer(context, provider, source),
+            // Web mode needs a large flexible area; other players are intrinsic.
+            if (isWeb)
+              Expanded(flex: 3, child: _buildPlayer(context, provider, source))
+            else
+              _buildPlayer(context, provider, source),
 
             // ── Source bar (change what we're watching) ───
             InkWell(
@@ -125,6 +131,7 @@ class WatchScreen extends StatelessWidget {
 
             // ── Chat ──────────────────────────────────────
             Expanded(
+              flex: isWeb ? 2 : 1,
               child: ChatPanel(
                 messages: provider.messages,
                 currentUsername: provider.username,
@@ -144,6 +151,8 @@ class WatchScreen extends StatelessWidget {
         return 'يوتيوب: ${s.title.isNotEmpty ? s.title : s.url}';
       case MediaType.direct:
         return 'فيديو: ${s.title.isNotEmpty ? s.title : s.url}';
+      case MediaType.web:
+        return 'موقع: ${s.url}';
       case MediaType.remote:
         return s.title.isNotEmpty ? s.title : 'مشاهدة خارجية';
     }
@@ -204,6 +213,20 @@ class WatchScreen extends StatelessWidget {
           onPause: provider.onPause,
           onSeek: provider.onSeek,
           onTimeUpdate: provider.onTimeUpdate,
+          onClearPendingPlay: provider.clearPendingPlay,
+          onClearPendingPause: provider.clearPendingPause,
+          onClearPendingSeek: provider.clearPendingSeek,
+        );
+      case MediaType.web:
+        return WebSyncWidget(
+          key: ValueKey('web-${source.url}'),
+          url: source.url,
+          pendingPlay: provider.pendingPlay,
+          pendingPause: provider.pendingPause,
+          pendingSeek: provider.pendingSeek,
+          onPlay: provider.onPlay,
+          onPause: provider.onPause,
+          onSeek: provider.onSeek,
           onClearPendingPlay: provider.clearPendingPlay,
           onClearPendingPause: provider.clearPendingPause,
           onClearPendingSeek: provider.clearPendingSeek,

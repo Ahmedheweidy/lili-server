@@ -1,8 +1,8 @@
-enum MediaType { youtube, direct, remote }
+enum MediaType { youtube, direct, web, remote }
 
 class MediaSource {
   final MediaType type;
-  final String url;    // youtube url, direct/m3u8 url, or '' for remote
+  final String url;    // youtube url, direct/m3u8 url, website url, or '' for remote
   final String title;  // free label, mainly for remote mode (e.g. "Netflix - اسم الفيلم")
 
   const MediaSource({
@@ -15,6 +15,8 @@ class MediaSource {
     switch (s) {
       case 'youtube':
         return MediaType.youtube;
+      case 'web':
+        return MediaType.web;
       case 'remote':
         return MediaType.remote;
       default:
@@ -26,6 +28,8 @@ class MediaSource {
     switch (type) {
       case MediaType.youtube:
         return 'youtube';
+      case MediaType.web:
+        return 'web';
       case MediaType.remote:
         return 'remote';
       case MediaType.direct:

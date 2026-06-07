@@ -27,6 +27,12 @@ class _SourcePickerState extends State<_SourcePicker> {
   final _urlCtrl = TextEditingController();
   final _titleCtrl = TextEditingController();
 
+  static const _services = {
+    'Netflix': 'https://www.netflix.com',
+    'شاهد': 'https://shahid.mbc.net',
+    'WatchiT': 'https://www.watchit.com',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -47,12 +53,12 @@ class _SourcePickerState extends State<_SourcePicker> {
   void _confirm() {
     final url = _urlCtrl.text.trim();
     final title = _titleCtrl.text.trim();
-    if (_type != MediaType.remote && url.isEmpty) return;
-    if (_type == MediaType.remote && title.isEmpty) return;
-    Navigator.pop(
-      context,
-      MediaSource(type: _type, url: url, title: title),
-    );
+    if (_type == MediaType.remote) {
+      if (title.isEmpty) return;
+    } else {
+      if (url.isEmpty) return;
+    }
+    Navigator.pop(context, MediaSource(type: _type, url: url, title: title));
   }
 
   @override
@@ -89,7 +95,7 @@ class _SourcePickerState extends State<_SourcePicker> {
           ),
           const SizedBox(height: 16),
 
-          // Type selector
+          // Type selector (two rows)
           Row(
             children: [
               _TypeChip(
@@ -105,10 +111,21 @@ class _SourcePickerState extends State<_SourcePicker> {
                 selected: _type == MediaType.direct,
                 onTap: () => setState(() => _type = MediaType.direct),
               ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              _TypeChip(
+                label: 'موقع (شاهد/نتفلكس)',
+                icon: Icons.public,
+                selected: _type == MediaType.web,
+                onTap: () => setState(() => _type = MediaType.web),
+              ),
               const SizedBox(width: 8),
               _TypeChip(
-                label: 'نتفلكس/شاهد',
-                icon: Icons.cast_connected,
+                label: 'عدّاد يدوي',
+                icon: Icons.timer,
                 selected: _type == MediaType.remote,
                 onTap: () => setState(() => _type = MediaType.remote),
               ),
@@ -117,25 +134,59 @@ class _SourcePickerState extends State<_SourcePicker> {
           const SizedBox(height: 16),
 
           // Inputs per type
-          if (_type == MediaType.youtube) ...[
-            _field(_urlCtrl, 'رابط يوتيوب', 'https://youtu.be/...'),
-          ] else if (_type == MediaType.direct) ...[
-            _field(_urlCtrl, 'رابط الفيديو أو بث m3u8', 'https://...mp4 / .m3u8'),
-          ] else ...[
-            // remote
+          if (_type == MediaType.youtube)
+            _field(_urlCtrl, 'رابط يوتيوب', 'https://youtu.be/...')
+          else if (_type == MediaType.direct)
+            _field(_urlCtrl, 'رابط الفيديو أو بث m3u8', 'https://...mp4 / .m3u8')
+          else if (_type == MediaType.web) ...[
             Wrap(
               spacing: 8,
-              children: [
-                _serviceChip('Netflix'),
-                _serviceChip('شاهد'),
-                _serviceChip('WatchiT'),
-              ],
+              children: _services.entries
+                  .map((e) => ActionChip(
+                        label: Text(e.key),
+                        backgroundColor: AppTheme.cardBg,
+                        labelStyle: const TextStyle(color: AppTheme.softLavender),
+                        onPressed: () {
+                          _urlCtrl.text = e.value;
+                          setState(() {});
+                        },
+                      ))
+                  .toList(),
+            ),
+            const SizedBox(height: 10),
+            _field(_urlCtrl, 'رابط الموقع', 'https://shahid.mbc.net'),
+            const SizedBox(height: 8),
+            const Text(
+              'هيفتح الموقع جوه التطبيق — سجّل دخولك بحسابك، والتشغيل/الإيقاف هيتزامن تلقائيًا بينكوا. '
+              '(شاهد و WatchiT غالبًا يشتغلوا، نتفلكس ممكن يرفض — وقتها استخدم العدّاد اليدوي)',
+              style: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
+            ),
+          ] else ...[
+            // remote / manual timer
+            Wrap(
+              spacing: 8,
+              children: _services.keys
+                  .map((name) => ActionChip(
+                        label: Text(name),
+                        backgroundColor: AppTheme.cardBg,
+                        labelStyle: const TextStyle(color: AppTheme.softLavender),
+                        onPressed: () {
+                          final existing = _titleCtrl.text.trim();
+                          if (existing.isEmpty || !existing.contains(' - ')) {
+                            _titleCtrl.text = '$name - ';
+                            _titleCtrl.selection =
+                                TextSelection.collapsed(offset: _titleCtrl.text.length);
+                          }
+                          setState(() {});
+                        },
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 10),
             _field(_titleCtrl, 'بنتفرج على إيه؟', 'مثال: Netflix - اسم الفيلم'),
             const SizedBox(height: 8),
             const Text(
-              'الفيديو هيشتغل في تطبيق الخدمة الرسمي، وهنا بس نزامن التشغيل والإيقاف + الشات.',
+              'الفيديو هيشتغل في تطبيق الخدمة الرسمي، وهنا بس نزامن عدّاد التشغيل + الشات.',
               style: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
             ),
           ],
@@ -156,23 +207,6 @@ class _SourcePickerState extends State<_SourcePicker> {
       style: const TextStyle(color: AppTheme.warmWhite),
       decoration: InputDecoration(labelText: label, hintText: hint),
       keyboardType: TextInputType.url,
-    );
-  }
-
-  Widget _serviceChip(String name) {
-    return ActionChip(
-      label: Text(name),
-      backgroundColor: AppTheme.cardBg,
-      labelStyle: const TextStyle(color: AppTheme.softLavender),
-      onPressed: () {
-        final existing = _titleCtrl.text.trim();
-        if (existing.isEmpty || !existing.contains(' - ')) {
-          _titleCtrl.text = '$name - ';
-          _titleCtrl.selection =
-              TextSelection.collapsed(offset: _titleCtrl.text.length);
-        }
-        setState(() {});
-      },
     );
   }
 }
@@ -196,7 +230,7 @@ class _TypeChip extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
           decoration: BoxDecoration(
             color: selected ? const Color(0xFF2A0F20) : AppTheme.cardBg,
             borderRadius: BorderRadius.circular(14),
@@ -211,6 +245,7 @@ class _TypeChip extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 label,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: selected ? AppTheme.rosePink : AppTheme.dimWhite,
                   fontSize: 12,
