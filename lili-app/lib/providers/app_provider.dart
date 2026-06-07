@@ -10,7 +10,7 @@ class AppProvider extends ChangeNotifier {
 
   AppScreen _screen = AppScreen.join;
   String _username = '';
-  String _serverUrl = 'https://lili-server.onrender.com';
+  String _serverUrl = 'https://lili-server-tnjj.onrender.com';
   final String _roomId = 'lili-room';
   List<String> _connectedUsers = [];
   List<ChatMessage> _messages = [];
