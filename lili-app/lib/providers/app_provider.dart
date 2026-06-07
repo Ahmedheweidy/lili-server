@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/chat_message.dart';
+import '../models/media_source.dart';
 import '../services/socket_service.dart';
 
 enum AppScreen { join, connecting, watch }
@@ -14,6 +15,7 @@ class AppProvider extends ChangeNotifier {
   final String _roomId = 'lili-room';
   List<String> _connectedUsers = [];
   List<ChatMessage> _messages = [];
+  MediaSource? _source;
   String? _notification;
   bool _connectionError = false;
 
@@ -27,6 +29,7 @@ class AppProvider extends ChangeNotifier {
   String    get roomId          => _roomId;
   List<String> get connectedUsers => List.unmodifiable(_connectedUsers);
   List<ChatMessage> get messages  => List.unmodifiable(_messages);
+  MediaSource? get source       => _source;
   String?   get notification    => _notification;
   bool      get connectionError => _connectionError;
   double?   get pendingPlay     => _pendingPlay;
@@ -62,11 +65,21 @@ class AppProvider extends ChangeNotifier {
       notifyListeners();
     });
 
-    _socket.onSyncState((isPlaying, currentTime, users, messages) {
+    _socket.onSyncState((isPlaying, currentTime, users, messages, source) {
       _connectedUsers = users;
       _messages = messages;
+      if (source != null) _source = source;
       _pendingSeek = currentTime;
       notifyListeners();
+    });
+
+    _socket.onSourceChanged((source) {
+      _source = source;
+      // reset pending playback markers for the new media
+      _pendingPlay = null;
+      _pendingPause = null;
+      _pendingSeek = null;
+      _showNotif('بتتفرجوا على: ${source.title.isNotEmpty ? source.title : 'فيديو جديد'} 🎬');
     });
 
     _socket.onRemotePlay((time, by) {
@@ -106,12 +119,22 @@ class AppProvider extends ChangeNotifier {
     _screen = AppScreen.join;
     _connectedUsers = [];
     _messages = [];
+    _source = null;
     notifyListeners();
   }
 
   void sendChatMessage(String text) {
     if (text.trim().isEmpty) return;
     _socket.sendChatMessage(text.trim());
+  }
+
+  void setSource(MediaSource source) {
+    _source = source;
+    _pendingPlay = null;
+    _pendingPause = null;
+    _pendingSeek = null;
+    notifyListeners();
+    _socket.setSource(source);
   }
 
   void onPlay(double t)                      => _socket.play(t);

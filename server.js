@@ -25,6 +25,7 @@ function getRoom(roomId) {
       lastUpdate: Date.now(),
       users: new Map(),
       messages: [],       // last 100 chat messages
+      source: null,       // { type: 'youtube'|'direct'|'remote', url, title }
     });
   }
   return rooms.get(roomId);
@@ -107,6 +108,7 @@ io.on('connection', (socket) => {
       currentTime: getCurrentTime(room),
       users: [...room.users.values()],
       messages: room.messages.slice(-50),
+      source: room.source,
     });
 
     socket.to(roomId).emit('user-joined', {
@@ -164,7 +166,27 @@ io.on('connection', (socket) => {
       currentTime: getCurrentTime(room),
       users: [...room.users.values()],
       messages: room.messages.slice(-50),
+      source: room.source,
     });
+  });
+
+  // ── Media source (what are we watching) ───────────────
+  socket.on('set-source', (data) => {
+    if (!currentRoomId) return;
+    const type = ['youtube', 'direct', 'remote'].includes(data?.type) ? data.type : null;
+    if (!type) return;
+    const url = typeof data?.url === 'string' ? data.url.trim().slice(0, 1000) : '';
+    const title = typeof data?.title === 'string' ? data.title.trim().slice(0, 200) : '';
+
+    const room = getRoom(currentRoomId);
+    room.source = { type, url, title };
+    // reset playback for the new media
+    room.isPlaying = false;
+    room.currentTime = 0;
+    room.lastUpdate = Date.now();
+
+    console.log(`SOURCE| ${socket.username} -> ${type} ${title || url} | room: ${currentRoomId}`);
+    io.to(currentRoomId).emit('source-changed', room.source);
   });
 
   // ── Chat ──────────────────────────────────────────────

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../theme/app_theme.dart';
 
+/// Plays a direct video URL (mp4) or an HLS (m3u8) stream, with custom
+/// controls whose play/pause/seek actions are broadcast for sync.
 class VideoPlayerWidget extends StatefulWidget {
+  final String url;
   final double? pendingPlay;
   final double? pendingPause;
   final double? pendingSeek;
-  final String? notification;
   final void Function(double) onPlay;
   final void Function(double) onPause;
   final void Function(double) onSeek;
@@ -18,6 +20,7 @@ class VideoPlayerWidget extends StatefulWidget {
 
   const VideoPlayerWidget({
     super.key,
+    required this.url,
     required this.onPlay,
     required this.onPause,
     required this.onSeek,
@@ -28,7 +31,6 @@ class VideoPlayerWidget extends StatefulWidget {
     this.pendingPlay,
     this.pendingPause,
     this.pendingSeek,
-    this.notification,
   });
 
   @override
@@ -42,11 +44,11 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   bool _isSeeking = false;
   double _sliderValue = 0;
   Timer? _timeTimer;
-  final _urlCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    _load(widget.url);
     _timeTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (_ctrl?.value.isInitialized ?? false) {
         widget.onTimeUpdate(
@@ -60,6 +62,11 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   @override
   void didUpdateWidget(VideoPlayerWidget old) {
     super.didUpdateWidget(old);
+
+    if (widget.url != old.url) {
+      _load(widget.url);
+      return;
+    }
 
     if (widget.pendingPlay != null && old.pendingPlay == null) {
       _applyRemote(() async {
@@ -92,19 +99,24 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     _isRemoteEvent = false;
   }
 
-  void _loadVideo() {
-    final url = _urlCtrl.text.trim();
+  void _load(String url) {
     if (url.isEmpty) return;
+    _ctrl?.removeListener(_onControllerUpdate);
     _ctrl?.dispose();
     final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
     ctrl.initialize().then((_) {
-      if (mounted) {
-        setState(() {
-          _ctrl = ctrl;
-          _sliderValue = 0;
-        });
-        ctrl.addListener(_onControllerUpdate);
+      if (!mounted) {
+        ctrl.dispose();
+        return;
       }
+      setState(() {
+        _ctrl = ctrl;
+        _sliderValue = 0;
+        _wasPlaying = false;
+      });
+      ctrl.addListener(_onControllerUpdate);
+    }).catchError((_) {
+      // ignore load errors; UI shows placeholder
     });
   }
 
@@ -114,15 +126,17 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     if (isPlaying != _wasPlaying) {
       _wasPlaying = isPlaying;
       final pos = _ctrl!.value.position.inMilliseconds / 1000.0;
-      if (isPlaying) widget.onPlay(pos); else widget.onPause(pos);
-    }
-    if (mounted && !_isSeeking) {
-      final dur = _ctrl!.value.duration.inMilliseconds;
-      if (dur > 0) {
-        setState(() {
-          _sliderValue = _ctrl!.value.position.inMilliseconds / dur;
-        });
+      if (isPlaying) {
+        widget.onPlay(pos);
+      } else {
+        widget.onPause(pos);
       }
+    }
+    final dur = _ctrl!.value.duration.inMilliseconds;
+    if (dur > 0 && !_isSeeking) {
+      setState(() {
+        _sliderValue = _ctrl!.value.position.inMilliseconds / dur;
+      });
     }
   }
 
@@ -135,7 +149,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     }
   }
 
-  String _formatDuration(Duration d) {
+  String _fmt(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -145,55 +159,42 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   @override
   void dispose() {
     _timeTimer?.cancel();
+    _ctrl?.removeListener(_onControllerUpdate);
     _ctrl?.dispose();
-    _urlCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final ready = _ctrl != null && _ctrl!.value.isInitialized;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        // ── Video area ────────────────────────────────────
         AspectRatio(
           aspectRatio: 16 / 9,
           child: Stack(
             alignment: Alignment.center,
             children: [
               Container(color: Colors.black),
-              if (_ctrl != null && _ctrl!.value.isInitialized)
-                VideoPlayer(_ctrl!),
-              if (_ctrl == null || !(_ctrl?.value.isInitialized ?? false))
-                const Icon(Icons.movie_outlined, size: 64, color: Color(0xFF3A2A4A)),
-
-              // Notification overlay
-              if (widget.notification != null)
-                Positioned(
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xCC1A0F2E),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      widget.notification!,
-                      style: const TextStyle(color: AppTheme.warmWhite, fontSize: 13),
-                    ),
-                  ),
+              if (ready) VideoPlayer(_ctrl!),
+              if (!ready)
+                const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: AppTheme.rosePink),
+                    SizedBox(height: 12),
+                    Text('بنحمّل الفيديو...', style: TextStyle(color: AppTheme.dimWhite)),
+                  ],
                 ),
             ],
           ),
         ),
-
-        // ── Controls ──────────────────────────────────────
         Container(
           color: AppTheme.nightSurface,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Seek bar
               SliderTheme(
                 data: SliderThemeData(
                   thumbColor: AppTheme.rosePink,
@@ -216,8 +217,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                   },
                 ),
               ),
-
-              // Play/pause + time + URL input
               Row(
                 children: [
                   IconButton(
@@ -229,47 +228,8 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                     ),
                   ),
                   Text(
-                    '${_formatDuration(_ctrl?.value.position ?? Duration.zero)} / ${_formatDuration(_ctrl?.value.duration ?? Duration.zero)}',
+                    '${_fmt(_ctrl?.value.position ?? Duration.zero)} / ${_fmt(_ctrl?.value.duration ?? Duration.zero)}',
                     style: const TextStyle(color: AppTheme.dimWhite, fontSize: 12),
-                  ),
-                  const Spacer(),
-                  // URL field
-                  SizedBox(
-                    width: 160,
-                    child: TextField(
-                      controller: _urlCtrl,
-                      style: const TextStyle(fontSize: 12, color: AppTheme.warmWhite),
-                      decoration: InputDecoration(
-                        hintText: 'رابط الفيديو / M3U8',
-                        hintStyle: const TextStyle(fontSize: 11),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                        isDense: true,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: Color(0xFF3A2A4A)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: AppTheme.rosePink),
-                        ),
-                        fillColor: AppTheme.cardBg,
-                        filled: true,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  SizedBox(
-                    height: 34,
-                    child: ElevatedButton(
-                      onPressed: _loadVideo,
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        backgroundColor: AppTheme.rosePink,
-                      ),
-                      child: const Text('تشغيل', style: TextStyle(fontSize: 12)),
-                    ),
                   ),
                 ],
               ),

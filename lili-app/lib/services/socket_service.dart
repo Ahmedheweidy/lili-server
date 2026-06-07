@@ -1,5 +1,6 @@
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/chat_message.dart';
+import '../models/media_source.dart';
 
 class SocketService {
   io.Socket? _socket;
@@ -35,6 +36,9 @@ class SocketService {
   void sendChatMessage(String text) =>
       _socket?.emit('chat-message', {'text': text});
 
+  void setSource(MediaSource source) =>
+      _socket?.emit('set-source', source.toJson());
+
   // ── Listeners ─────────────────────────────────────────
 
   void onConnect(void Function() cb) =>
@@ -47,7 +51,9 @@ class SocketService {
       _socket?.onConnectError((_) => cb());
 
   void onSyncState(
-    void Function(bool isPlaying, double currentTime, List<String> users, List<ChatMessage> messages) cb,
+    void Function(bool isPlaying, double currentTime, List<String> users,
+            List<ChatMessage> messages, MediaSource? source)
+        cb,
   ) {
     _socket?.on('sync-state', (raw) {
       final d = Map<String, dynamic>.from(raw as Map);
@@ -57,7 +63,16 @@ class SocketService {
       final msgs = (d['messages'] as List? ?? [])
           .map((m) => ChatMessage.fromJson(Map<String, dynamic>.from(m as Map)))
           .toList();
-      cb(d['isPlaying'] as bool, (d['currentTime'] as num).toDouble(), users, msgs);
+      final src = d['source'] == null
+          ? null
+          : MediaSource.fromJson(Map<String, dynamic>.from(d['source'] as Map));
+      cb(d['isPlaying'] as bool, (d['currentTime'] as num).toDouble(), users, msgs, src);
+    });
+  }
+
+  void onSourceChanged(void Function(MediaSource source) cb) {
+    _socket?.on('source-changed', (raw) {
+      cb(MediaSource.fromJson(Map<String, dynamic>.from(raw as Map)));
     });
   }
 
