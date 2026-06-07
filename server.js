@@ -1,9 +1,3 @@
-/**
- * WatchParty Server
- * سيرفر المزامنة بين أحمد وليلى
- * يستخدم Socket.io للاتصال اللحظي
- */
-
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -11,130 +5,205 @@ const cors = require('cors');
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: '*', methods: ['GET', 'POST'] },
+  pingTimeout: 30000,
+  pingInterval: 10000,
 });
 
-// تخزين حالة الغرفة
-const roomState = {
-  isPlaying: false,
-  currentTime: 0,
-  lastUpdate: Date.now(),
-  connectedUsers: []
-};
+// كل غرفة بتتخزن لوحدها
+const rooms = new Map();
 
-// API endpoint للتحقق من حالة السيرفر
+function getRoom(roomId) {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, {
+      isPlaying: false,
+      currentTime: 0,
+      lastUpdate: Date.now(),
+      users: new Map(),
+    });
+  }
+  return rooms.get(roomId);
+}
+
+// بيحسب الوقت الحقيقي لو الفيديو شغال
+function getCurrentTime(room) {
+  if (room.isPlaying) {
+    return room.currentTime + (Date.now() - room.lastUpdate) / 1000;
+  }
+  return room.currentTime;
+}
+
+function removeFromRoom(socket, roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  room.users.delete(socket.id);
+  socket.leave(roomId);
+  io.to(roomId).emit('user-left', {
+    username: socket.username,
+    totalUsers: room.users.size,
+  });
+  // امسح الغرفة لو فضت
+  if (room.users.size === 0) rooms.delete(roomId);
+}
+
+// ── API endpoints ─────────────────────────────────────
 app.get('/', (req, res) => {
+  const totalUsers = [...rooms.values()].reduce((n, r) => n + r.users.size, 0);
   res.json({
     status: 'online',
-    message: '🎬 WatchParty Server is running!',
-    connectedUsers: roomState.connectedUsers.length,
-    roomState: {
-      isPlaying: roomState.isPlaying,
-      currentTime: roomState.currentTime
+    message: 'WatchParty Server is running!',
+    activeRooms: rooms.size,
+    totalUsers,
+  });
+});
+
+app.get('/rooms', (req, res) => {
+  const list = [...rooms.entries()].map(([id, room]) => ({
+    id,
+    users: [...room.users.values()].map((u) => u.name),
+    isPlaying: room.isPlaying,
+    currentTime: Math.floor(getCurrentTime(room)),
+  }));
+  res.json(list);
+});
+
+// ── Socket.io ─────────────────────────────────────────
+io.on('connection', (socket) => {
+  console.log(`Connected: ${socket.id}`);
+  let currentRoomId = null;
+
+  socket.on('join', (payload) => {
+    const roomId =
+      typeof payload?.roomId === 'string' && payload.roomId.trim()
+        ? payload.roomId.trim().slice(0, 50)
+        : 'default';
+    const username =
+      typeof payload?.username === 'string' && payload.username.trim()
+        ? payload.username.trim().slice(0, 30)
+        : typeof payload === 'string' && payload.trim()
+        ? payload.trim().slice(0, 30)
+        : 'Guest';
+
+    // اطلع من الغرفة القديمة لو موجود
+    if (currentRoomId) removeFromRoom(socket, currentRoomId);
+
+    currentRoomId = roomId;
+    socket.username = username;
+    socket.join(roomId);
+
+    const room = getRoom(roomId);
+    room.users.set(socket.id, { id: socket.id, name: username });
+
+    console.log(`${username} joined room "${roomId}"`);
+
+    // ابعت الحالة الحقيقية للداخل الجديد
+    socket.emit('sync-state', {
+      isPlaying: room.isPlaying,
+      currentTime: getCurrentTime(room),
+      users: [...room.users.values()],
+    });
+
+    socket.to(roomId).emit('user-joined', {
+      username,
+      totalUsers: room.users.size,
+    });
+  });
+
+  socket.on('play', (data) => {
+    if (!currentRoomId) return;
+    const time = parseFloat(data?.currentTime);
+    if (isNaN(time) || time < 0) return;
+
+    const room = getRoom(currentRoomId);
+    room.isPlaying = true;
+    room.currentTime = time;
+    room.lastUpdate = Date.now();
+
+    console.log(`PLAY  | ${socket.username} @ ${time.toFixed(1)}s | room: ${currentRoomId}`);
+    socket.to(currentRoomId).emit('remote-play', { currentTime: time, triggeredBy: socket.username });
+  });
+
+  socket.on('pause', (data) => {
+    if (!currentRoomId) return;
+    const time = parseFloat(data?.currentTime);
+    if (isNaN(time) || time < 0) return;
+
+    const room = getRoom(currentRoomId);
+    room.isPlaying = false;
+    room.currentTime = time;
+    room.lastUpdate = Date.now();
+
+    console.log(`PAUSE | ${socket.username} @ ${time.toFixed(1)}s | room: ${currentRoomId}`);
+    socket.to(currentRoomId).emit('remote-pause', { currentTime: time, triggeredBy: socket.username });
+  });
+
+  socket.on('seek', (data) => {
+    if (!currentRoomId) return;
+    const time = parseFloat(data?.currentTime);
+    if (isNaN(time) || time < 0) return;
+
+    const room = getRoom(currentRoomId);
+    room.currentTime = time;
+    room.lastUpdate = Date.now();
+
+    console.log(`SEEK  | ${socket.username} -> ${time.toFixed(1)}s | room: ${currentRoomId}`);
+    socket.to(currentRoomId).emit('remote-seek', { currentTime: time, triggeredBy: socket.username });
+  });
+
+  socket.on('request-sync', () => {
+    if (!currentRoomId) return;
+    const room = getRoom(currentRoomId);
+    socket.emit('sync-state', {
+      isPlaying: room.isPlaying,
+      currentTime: getCurrentTime(room),
+      users: [...room.users.values()],
+    });
+  });
+
+  // الـ client بيبعت الوقت الحالي دوريًا - بنحدث لو الفيديو شغال
+  socket.on('time-update', (data) => {
+    if (!currentRoomId) return;
+    const time = parseFloat(data?.currentTime);
+    if (isNaN(time) || time < 0) return;
+    const room = getRoom(currentRoomId);
+    if (room.isPlaying) {
+      room.currentTime = time;
+      room.lastUpdate = Date.now();
     }
   });
-});
 
-// التعامل مع اتصالات Socket.io
-io.on('connection', (socket) => {
-  console.log(`✅ User connected: ${socket.id}`);
-  
-  // إضافة المستخدم للغرفة
-  socket.on('join', (username) => {
-    socket.username = username || 'Guest';
-    roomState.connectedUsers.push({
-      id: socket.id,
-      name: socket.username
-    });
-    
-    console.log(`👤 ${socket.username} joined the party!`);
-    
-    // إرسال الحالة الحالية للمستخدم الجديد
-    socket.emit('sync-state', roomState);
-    
-    // إعلام الجميع بانضمام مستخدم جديد
-    io.emit('user-joined', {
-      username: socket.username,
-      totalUsers: roomState.connectedUsers.length
-    });
+  socket.on('disconnect', (reason) => {
+    console.log(`Disconnected: ${socket.username || socket.id} (${reason})`);
+    if (currentRoomId) removeFromRoom(socket, currentRoomId);
   });
 
-  // استقبال أمر التشغيل
-  socket.on('play', (data) => {
-    console.log(`▶️ ${socket.username} pressed PLAY at ${data.currentTime}s`);
-    roomState.isPlaying = true;
-    roomState.currentTime = data.currentTime;
-    roomState.lastUpdate = Date.now();
-    
-    // إرسال لكل المستخدمين ما عدا المرسل
-    socket.broadcast.emit('remote-play', {
-      currentTime: data.currentTime,
-      triggeredBy: socket.username
-    });
-  });
-
-  // استقبال أمر الإيقاف
-  socket.on('pause', (data) => {
-    console.log(`⏸️ ${socket.username} pressed PAUSE at ${data.currentTime}s`);
-    roomState.isPlaying = false;
-    roomState.currentTime = data.currentTime;
-    roomState.lastUpdate = Date.now();
-    
-    socket.broadcast.emit('remote-pause', {
-      currentTime: data.currentTime,
-      triggeredBy: socket.username
-    });
-  });
-
-  // استقبال أمر التقديم/الترجيع
-  socket.on('seek', (data) => {
-    console.log(`⏩ ${socket.username} seeked to ${data.currentTime}s`);
-    roomState.currentTime = data.currentTime;
-    roomState.lastUpdate = Date.now();
-    
-    socket.broadcast.emit('remote-seek', {
-      currentTime: data.currentTime,
-      triggeredBy: socket.username
-    });
-  });
-
-  // طلب مزامنة الوقت
-  socket.on('request-sync', () => {
-    socket.emit('sync-state', roomState);
-  });
-
-  // تحديث الوقت الحالي (كل 5 ثواني)
-  socket.on('time-update', (data) => {
-    roomState.currentTime = data.currentTime;
-    roomState.isPlaying = data.isPlaying;
-  });
-
-  // عند قطع الاتصال
-  socket.on('disconnect', () => {
-    console.log(`❌ ${socket.username || 'User'} disconnected`);
-    roomState.connectedUsers = roomState.connectedUsers.filter(
-      user => user.id !== socket.id
-    );
-    
-    io.emit('user-left', {
-      username: socket.username,
-      totalUsers: roomState.connectedUsers.length
-    });
+  socket.on('error', (err) => {
+    console.error(`Socket error [${socket.id}]:`, err.message);
   });
 });
 
-// تشغيل السيرفر
+// ── Graceful shutdown ─────────────────────────────────
+process.on('SIGTERM', () => {
+  console.log('Shutting down gracefully...');
+  io.close();
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGINT', () => {
+  console.log('\nStopping server...');
+  io.close();
+  server.close(() => process.exit(0));
+});
+
+// ── Start ─────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log('═══════════════════════════════════════');
-  console.log('   🎬 WatchParty Server Started!');
-  console.log('═══════════════════════════════════════');
-  console.log(`   📡 Port: ${PORT}`);
+  console.log('   WatchParty Server Started!');
+  console.log(`   Port: ${PORT}`);
   console.log('═══════════════════════════════════════');
 });
