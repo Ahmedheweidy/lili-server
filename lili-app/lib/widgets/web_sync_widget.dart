@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../theme/app_theme.dart';
 
-/// Teleparty-style sync: loads a streaming website in a WebView where each
-/// person logs into their own account. Injected JavaScript hooks the page's
-/// <video> element so play/pause/seek are broadcast and applied on both
-/// sides — the video itself plays through the site's official player.
 class WebSyncWidget extends StatefulWidget {
   final String url;
   final double? pendingPlay;
@@ -38,6 +34,7 @@ class WebSyncWidget extends StatefulWidget {
 
 class _WebSyncWidgetState extends State<WebSyncWidget> {
   InAppWebViewController? _controller;
+  final _urlController = TextEditingController();
 
   static const String _injectJs = '''
 (function(){
@@ -78,6 +75,18 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
 ''';
 
   @override
+  void initState() {
+    super.initState();
+    _urlController.text = widget.url;
+  }
+
+  @override
+  void dispose() {
+    _urlController.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(WebSyncWidget old) {
     super.didUpdateWidget(old);
     if (widget.pendingPlay != null && old.pendingPlay == null) {
@@ -100,43 +109,131 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
     );
   }
 
+  void _navigate(String input) {
+    final text = input.trim();
+    if (text.isEmpty) return;
+    final String url;
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      url = text;
+    } else {
+      url = 'https://www.google.com/search?q=${Uri.encodeComponent(text)}';
+    }
+    _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(url)));
+  }
+
   @override
   Widget build(BuildContext context) {
-    return InAppWebView(
-      initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-        mediaPlaybackRequiresUserGesture: false,
-        allowsInlineMediaPlayback: true,
-        useHybridComposition: true,
+    return Column(
+      children: [
+        // ── Browser navigation bar ────────────────────────
+        Container(
+          color: AppTheme.nightSurface,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          child: Row(
+            children: [
+              _NavBtn(
+                icon: Icons.arrow_back_ios_new,
+                onTap: () async {
+                  if (await _controller?.canGoBack() ?? false) {
+                    _controller?.goBack();
+                  }
+                },
+              ),
+              _NavBtn(
+                icon: Icons.refresh,
+                onTap: () => _controller?.reload(),
+              ),
+              Expanded(
+                child: Container(
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.cardBg,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: TextField(
+                    controller: _urlController,
+                    style: const TextStyle(color: AppTheme.warmWhite, fontSize: 12),
+                    decoration: const InputDecoration(
+                      hintText: 'ابحث أو اكتب رابط...',
+                      hintStyle: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 10),
+                    ),
+                    keyboardType: TextInputType.url,
+                    textInputAction: TextInputAction.go,
+                    onSubmitted: _navigate,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+            ],
+          ),
+        ),
+
+        // ── WebView ───────────────────────────────────────
+        Expanded(
+          child: InAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              mediaPlaybackRequiresUserGesture: false,
+              allowsInlineMediaPlayback: true,
+              useHybridComposition: true,
+            ),
+            onWebViewCreated: (controller) {
+              _controller = controller;
+              controller.addJavaScriptHandler(
+                handlerName: 'liliSync',
+                callback: (args) {
+                  if (args.isEmpty) return;
+                  final data = args.first;
+                  if (data is! Map) return;
+                  final action = data['action'] as String?;
+                  final time = (data['time'] as num?)?.toDouble() ?? 0;
+                  switch (action) {
+                    case 'play':
+                      widget.onPlay(time);
+                      break;
+                    case 'pause':
+                      widget.onPause(time);
+                      break;
+                    case 'seek':
+                      widget.onSeek(time);
+                      break;
+                  }
+                },
+              );
+            },
+            onLoadStop: (controller, url) async {
+              final urlStr = url?.toString() ?? '';
+              if (urlStr.isNotEmpty) {
+                setState(() => _urlController.text = urlStr);
+              }
+              await controller.evaluateJavascript(source: _injectJs);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _NavBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _NavBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Icon(icon, color: AppTheme.softLavender, size: 18),
       ),
-      onWebViewCreated: (controller) {
-        _controller = controller;
-        controller.addJavaScriptHandler(
-          handlerName: 'liliSync',
-          callback: (args) {
-            if (args.isEmpty) return;
-            final data = args.first;
-            if (data is! Map) return;
-            final action = data['action'] as String?;
-            final time = (data['time'] as num?)?.toDouble() ?? 0;
-            switch (action) {
-              case 'play':
-                widget.onPlay(time);
-                break;
-              case 'pause':
-                widget.onPause(time);
-                break;
-              case 'seek':
-                widget.onSeek(time);
-                break;
-            }
-          },
-        );
-      },
-      onLoadStop: (controller, url) async {
-        await controller.evaluateJavascript(source: _injectJs);
-      },
     );
   }
 }

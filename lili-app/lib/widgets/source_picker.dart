@@ -55,6 +55,14 @@ class _SourcePickerState extends State<_SourcePicker> {
     final title = _titleCtrl.text.trim();
     if (_type == MediaType.remote) {
       if (title.isEmpty) return;
+    } else if (_type == MediaType.web) {
+      // URL optional — defaults to Google so user can browse freely
+      Navigator.pop(context, MediaSource(
+        type: _type,
+        url: url.isEmpty ? 'https://www.google.com' : url,
+        title: title,
+      ));
+      return;
     } else {
       if (url.isEmpty) return;
     }
@@ -154,12 +162,11 @@ class _SourcePickerState extends State<_SourcePicker> {
                   .toList(),
             ),
             const SizedBox(height: 10),
-            _field(_urlCtrl, 'رابط الموقع', 'https://...'),
+            _field(_urlCtrl, 'رابط (اختياري)', 'اتركه فاضي تبدأ من جوجل'),
             const SizedBox(height: 8),
             const Text(
-              'هيفتح الموقع جوه التطبيق — سجّل دخولك بحسابك، والتشغيل/الإيقاف هيتزامن تلقائيًا بينكوا. '
-              'يشتغل مع أي موقع فيه HTML5 video (شاهد، WatchiT، وغيرهم). '
-              'نتفلكس ممكن يرفض — وقتها استخدم العدّاد اليدوي.',
+              'هيفتح متصفح جوا التطبيق — تصفح وابحث بحرية، وسجّل دخولك على أي موقع. '
+              'لما تشغّل أي فيديو، التزامن يشتغل تلقائيًا بينكوا.',
               style: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
             ),
           ] else ...[
