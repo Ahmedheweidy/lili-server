@@ -152,7 +152,7 @@ class WatchScreen extends StatelessWidget {
       case MediaType.direct:
         return 'فيديو: ${s.title.isNotEmpty ? s.title : s.url}';
       case MediaType.web:
-        return 'موقع: ${s.url}';
+        return 'مشاهدة: ${s.url}';
       case MediaType.remote:
         return s.title.isNotEmpty ? s.title : 'مشاهدة خارجية';
     }

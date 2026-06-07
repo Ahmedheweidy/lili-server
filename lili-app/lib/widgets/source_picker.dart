@@ -117,7 +117,7 @@ class _SourcePickerState extends State<_SourcePicker> {
           Row(
             children: [
               _TypeChip(
-                label: 'موقع (شاهد/نتفلكس)',
+                label: 'موقع مشاهدة',
                 icon: Icons.public,
                 selected: _type == MediaType.web,
                 onTap: () => setState(() => _type = MediaType.web),
@@ -154,11 +154,12 @@ class _SourcePickerState extends State<_SourcePicker> {
                   .toList(),
             ),
             const SizedBox(height: 10),
-            _field(_urlCtrl, 'رابط الموقع', 'https://shahid.mbc.net'),
+            _field(_urlCtrl, 'رابط الموقع', 'https://...'),
             const SizedBox(height: 8),
             const Text(
               'هيفتح الموقع جوه التطبيق — سجّل دخولك بحسابك، والتشغيل/الإيقاف هيتزامن تلقائيًا بينكوا. '
-              '(شاهد و WatchiT غالبًا يشتغلوا، نتفلكس ممكن يرفض — وقتها استخدم العدّاد اليدوي)',
+              'يشتغل مع أي موقع فيه HTML5 video (شاهد، WatchiT، وغيرهم). '
+              'نتفلكس ممكن يرفض — وقتها استخدم العدّاد اليدوي.',
               style: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
             ),
           ] else ...[
