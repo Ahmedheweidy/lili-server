@@ -30,9 +30,6 @@ class SocketService {
   void seek(double t)  => _socket?.emit('seek',  {'currentTime': t});
   void requestSync()   => _socket?.emit('request-sync');
 
-  void sendTimeUpdate(double t, bool isPlaying) =>
-      _socket?.emit('time-update', {'currentTime': t, 'isPlaying': isPlaying});
-
   void sendChatMessage(String text) =>
       _socket?.emit('chat-message', {'text': text});
 

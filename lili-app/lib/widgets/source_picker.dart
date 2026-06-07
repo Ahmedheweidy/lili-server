@@ -23,13 +23,13 @@ class _SourcePicker extends StatefulWidget {
 }
 
 class _SourcePickerState extends State<_SourcePicker> {
-  MediaType _type = MediaType.youtube;
-  final _urlCtrl = TextEditingController();
+  MediaType _type = MediaType.web;
+  final _urlCtrl   = TextEditingController();
   final _titleCtrl = TextEditingController();
 
   static const _services = {
     'Netflix': 'https://www.netflix.com',
-    'شاهد': 'https://shahid.mbc.net',
+    'شاهد':   'https://shahid.mbc.net',
     'WatchiT': 'https://www.watchit.com',
   };
 
@@ -38,7 +38,7 @@ class _SourcePickerState extends State<_SourcePicker> {
     super.initState();
     if (widget.current != null) {
       _type = widget.current!.type;
-      _urlCtrl.text = widget.current!.url;
+      _urlCtrl.text   = widget.current!.url;
       _titleCtrl.text = widget.current!.title;
     }
   }
@@ -51,22 +51,20 @@ class _SourcePickerState extends State<_SourcePicker> {
   }
 
   void _confirm() {
-    final url = _urlCtrl.text.trim();
+    final url   = _urlCtrl.text.trim();
     final title = _titleCtrl.text.trim();
+
     if (_type == MediaType.remote) {
       if (title.isEmpty) return;
-    } else if (_type == MediaType.web) {
-      // URL optional — defaults to Google so user can browse freely
+      Navigator.pop(context, MediaSource(type: _type, url: url, title: title));
+    } else {
+      // browser mode: URL optional, defaults to Google
       Navigator.pop(context, MediaSource(
         type: _type,
         url: url.isEmpty ? 'https://www.google.com' : url,
         title: title,
       ));
-      return;
-    } else {
-      if (url.isEmpty) return;
     }
-    Navigator.pop(context, MediaSource(type: _type, url: url, title: title));
   }
 
   @override
@@ -84,8 +82,7 @@ class _SourcePickerState extends State<_SourcePicker> {
         children: [
           Center(
             child: Container(
-              width: 40,
-              height: 4,
+              width: 40, height: 4,
               decoration: BoxDecoration(
                 color: AppTheme.dimWhite,
                 borderRadius: BorderRadius.circular(2),
@@ -103,29 +100,11 @@ class _SourcePickerState extends State<_SourcePicker> {
           ),
           const SizedBox(height: 16),
 
-          // Type selector (two rows)
+          // ── Mode selector ─────────────────────────────
           Row(
             children: [
               _TypeChip(
-                label: 'يوتيوب',
-                icon: Icons.smart_display,
-                selected: _type == MediaType.youtube,
-                onTap: () => setState(() => _type = MediaType.youtube),
-              ),
-              const SizedBox(width: 8),
-              _TypeChip(
-                label: 'رابط مباشر',
-                icon: Icons.link,
-                selected: _type == MediaType.direct,
-                onTap: () => setState(() => _type = MediaType.direct),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              _TypeChip(
-                label: 'موقع مشاهدة',
+                label: 'متصفح',
                 icon: Icons.public,
                 selected: _type == MediaType.web,
                 onTap: () => setState(() => _type = MediaType.web),
@@ -141,60 +120,63 @@ class _SourcePickerState extends State<_SourcePicker> {
           ),
           const SizedBox(height: 16),
 
-          // Inputs per type
-          if (_type == MediaType.youtube)
-            _field(_urlCtrl, 'رابط يوتيوب', 'https://youtu.be/...')
-          else if (_type == MediaType.direct)
-            _field(_urlCtrl, 'رابط الفيديو أو بث m3u8', 'https://...mp4 / .m3u8')
-          else if (_type == MediaType.web) ...[
+          // ── Inputs ────────────────────────────────────
+          if (_type == MediaType.web) ...[
             Wrap(
               spacing: 8,
-              children: _services.entries
-                  .map((e) => ActionChip(
-                        label: Text(e.key),
-                        backgroundColor: AppTheme.cardBg,
-                        labelStyle: const TextStyle(color: AppTheme.softLavender),
-                        onPressed: () {
-                          _urlCtrl.text = e.value;
-                          setState(() {});
-                        },
-                      ))
-                  .toList(),
+              children: _services.entries.map((e) => ActionChip(
+                label: Text(e.key),
+                backgroundColor: AppTheme.cardBg,
+                labelStyle: const TextStyle(color: AppTheme.softLavender),
+                onPressed: () => setState(() => _urlCtrl.text = e.value),
+              )).toList(),
             ),
             const SizedBox(height: 10),
-            _field(_urlCtrl, 'رابط (اختياري)', 'اتركه فاضي تبدأ من جوجل'),
+            TextField(
+              controller: _urlCtrl,
+              style: const TextStyle(color: AppTheme.warmWhite),
+              decoration: const InputDecoration(
+                labelText: 'رابط (اختياري)',
+                hintText: 'اتركه فاضي تبدأ من جوجل',
+              ),
+              keyboardType: TextInputType.url,
+            ),
             const SizedBox(height: 8),
             const Text(
-              'هيفتح متصفح جوا التطبيق — تصفح وابحث بحرية، وسجّل دخولك على أي موقع. '
+              'متصفح كامل جوا التطبيق — تصفح وابحث بحرية وسجّل دخولك على أي موقع. '
               'لما تشغّل أي فيديو، التزامن يشتغل تلقائيًا بينكوا.',
               style: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
             ),
           ] else ...[
-            // remote / manual timer
             Wrap(
               spacing: 8,
-              children: _services.keys
-                  .map((name) => ActionChip(
-                        label: Text(name),
-                        backgroundColor: AppTheme.cardBg,
-                        labelStyle: const TextStyle(color: AppTheme.softLavender),
-                        onPressed: () {
-                          final existing = _titleCtrl.text.trim();
-                          if (existing.isEmpty || !existing.contains(' - ')) {
-                            _titleCtrl.text = '$name - ';
-                            _titleCtrl.selection =
-                                TextSelection.collapsed(offset: _titleCtrl.text.length);
-                          }
-                          setState(() {});
-                        },
-                      ))
-                  .toList(),
+              children: _services.keys.map((name) => ActionChip(
+                label: Text(name),
+                backgroundColor: AppTheme.cardBg,
+                labelStyle: const TextStyle(color: AppTheme.softLavender),
+                onPressed: () {
+                  final existing = _titleCtrl.text.trim();
+                  if (existing.isEmpty || !existing.contains(' - ')) {
+                    _titleCtrl.text = '$name - ';
+                    _titleCtrl.selection =
+                        TextSelection.collapsed(offset: _titleCtrl.text.length);
+                  }
+                  setState(() {});
+                },
+              )).toList(),
             ),
             const SizedBox(height: 10),
-            _field(_titleCtrl, 'بنتفرج على إيه؟', 'مثال: Netflix - اسم الفيلم'),
+            TextField(
+              controller: _titleCtrl,
+              style: const TextStyle(color: AppTheme.warmWhite),
+              decoration: const InputDecoration(
+                labelText: 'بنتفرج على إيه؟',
+                hintText: 'مثال: Netflix - اسم الفيلم',
+              ),
+            ),
             const SizedBox(height: 8),
             const Text(
-              'الفيديو هيشتغل في تطبيق الخدمة الرسمي، وهنا بس نزامن عدّاد التشغيل + الشات.',
+              'لما نتفلكس أو أي موقع يرفض المتصفح الداخلي — شغّل الفيديو في تطبيقه الرسمي وهنا بس نزامن العدّاد + الشات.',
               style: TextStyle(color: AppTheme.dimWhite, fontSize: 12),
             ),
           ],
@@ -206,15 +188,6 @@ class _SourcePickerState extends State<_SourcePicker> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _field(TextEditingController c, String label, String hint) {
-    return TextField(
-      controller: c,
-      style: const TextStyle(color: AppTheme.warmWhite),
-      decoration: InputDecoration(labelText: label, hintText: hint),
-      keyboardType: TextInputType.url,
     );
   }
 }
@@ -238,7 +211,7 @@ class _TypeChip extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
           decoration: BoxDecoration(
             color: selected ? const Color(0xFF2A0F20) : AppTheme.cardBg,
             borderRadius: BorderRadius.circular(14),
@@ -249,14 +222,14 @@ class _TypeChip extends StatelessWidget {
           ),
           child: Column(
             children: [
-              Icon(icon, color: selected ? AppTheme.rosePink : AppTheme.dimWhite, size: 22),
+              Icon(icon, color: selected ? AppTheme.rosePink : AppTheme.dimWhite, size: 24),
               const SizedBox(height: 4),
               Text(
                 label,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: selected ? AppTheme.rosePink : AppTheme.dimWhite,
-                  fontSize: 12,
+                  fontSize: 13,
                   fontWeight: selected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),

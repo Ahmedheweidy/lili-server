@@ -3,10 +3,8 @@ import 'package:provider/provider.dart';
 import '../models/media_source.dart';
 import '../providers/app_provider.dart';
 import '../theme/app_theme.dart';
-import '../widgets/video_player_widget.dart';
-import '../widgets/youtube_player_widget.dart';
-import '../widgets/remote_sync_widget.dart';
 import '../widgets/web_sync_widget.dart';
+import '../widgets/remote_sync_widget.dart';
 import '../widgets/chat_panel.dart';
 import '../widgets/source_picker.dart';
 
@@ -22,8 +20,8 @@ class WatchScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<AppProvider>();
-    final source = provider.source;
-    final isWeb = source?.type == MediaType.web;
+    final source   = provider.source;
+    final isBrowser = source?.type == MediaType.web || source == null;
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
@@ -63,8 +61,7 @@ class WatchScreen extends StatelessWidget {
                             )),
                         const SizedBox(width: 6),
                         Container(
-                          width: 8,
-                          height: 8,
+                          width: 8, height: 8,
                           decoration: const BoxDecoration(
                             color: Color(0xFF4CAF50),
                             shape: BoxShape.circle,
@@ -86,14 +83,13 @@ class WatchScreen extends StatelessWidget {
               ),
             ),
 
-            // ── Player area ───────────────────────────────
-            // Web mode needs a large flexible area; other players are intrinsic.
-            if (isWeb)
-              Expanded(flex: 3, child: _buildPlayer(context, provider, source))
-            else
-              _buildPlayer(context, provider, source),
+            // ── Player / Browser ──────────────────────────
+            Expanded(
+              flex: 3,
+              child: _buildPlayer(context, provider, source),
+            ),
 
-            // ── Source bar (change what we're watching) ───
+            // ── Source bar ────────────────────────────────
             InkWell(
               onTap: () => _pickSource(context),
               child: Container(
@@ -101,7 +97,11 @@ class WatchScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
                   children: [
-                    const Icon(Icons.movie_filter, color: AppTheme.softLavender, size: 18),
+                    Icon(
+                      source?.type == MediaType.remote ? Icons.timer : Icons.public,
+                      color: AppTheme.softLavender,
+                      size: 18,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -131,7 +131,7 @@ class WatchScreen extends StatelessWidget {
 
             // ── Chat ──────────────────────────────────────
             Expanded(
-              flex: isWeb ? 2 : 1,
+              flex: isBrowser ? 2 : 1,
               child: ChatPanel(
                 messages: provider.messages,
                 currentUsername: provider.username,
@@ -145,106 +145,66 @@ class WatchScreen extends StatelessWidget {
   }
 
   String _sourceLabel(MediaSource? s) {
-    if (s == null) return 'اختار فيديو نتفرج عليه';
-    switch (s.type) {
-      case MediaType.youtube:
-        return 'يوتيوب: ${s.title.isNotEmpty ? s.title : s.url}';
-      case MediaType.direct:
-        return 'فيديو: ${s.title.isNotEmpty ? s.title : s.url}';
-      case MediaType.web:
-        return 'مشاهدة: ${s.url}';
-      case MediaType.remote:
-        return s.title.isNotEmpty ? s.title : 'مشاهدة خارجية';
+    if (s == null) return 'افتح متصفح وابدأ تتفرج';
+    if (s.type == MediaType.remote) {
+      return s.title.isNotEmpty ? s.title : 'عدّاد يدوي';
     }
+    return s.url.isNotEmpty ? s.url : 'متصفح';
   }
 
   Widget _buildPlayer(BuildContext context, AppProvider provider, MediaSource? source) {
     if (source == null) {
-      return AspectRatio(
-        aspectRatio: 16 / 9,
-        child: Container(
-          color: Colors.black,
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('🎬', style: TextStyle(fontSize: 40)),
-                const SizedBox(height: 8),
-                const Text(
-                  'لسه مفيش حاجة شغالة',
-                  style: TextStyle(color: AppTheme.dimWhite),
-                ),
-                const SizedBox(height: 12),
-                ElevatedButton(
-                  onPressed: () => _pickSource(context),
-                  child: const Text('اختار فيديو'),
-                ),
-              ],
-            ),
+      return Container(
+        color: Colors.black,
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('🎬', style: TextStyle(fontSize: 40)),
+              const SizedBox(height: 8),
+              const Text(
+                'افتح متصفح وابدأ تتفرج',
+                style: TextStyle(color: AppTheme.dimWhite),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () => _pickSource(context),
+                child: const Text('ابدأ'),
+              ),
+            ],
           ),
         ),
       );
     }
 
-    switch (source.type) {
-      case MediaType.youtube:
-        return YoutubePlayerWidget(
-          key: ValueKey('yt-${source.url}'),
-          url: source.url,
-          pendingPlay: provider.pendingPlay,
-          pendingPause: provider.pendingPause,
-          pendingSeek: provider.pendingSeek,
-          onPlay: provider.onPlay,
-          onPause: provider.onPause,
-          onSeek: provider.onSeek,
-          onTimeUpdate: provider.onTimeUpdate,
-          onClearPendingPlay: provider.clearPendingPlay,
-          onClearPendingPause: provider.clearPendingPause,
-          onClearPendingSeek: provider.clearPendingSeek,
-        );
-      case MediaType.direct:
-        return VideoPlayerWidget(
-          key: ValueKey('vid-${source.url}'),
-          url: source.url,
-          pendingPlay: provider.pendingPlay,
-          pendingPause: provider.pendingPause,
-          pendingSeek: provider.pendingSeek,
-          onPlay: provider.onPlay,
-          onPause: provider.onPause,
-          onSeek: provider.onSeek,
-          onTimeUpdate: provider.onTimeUpdate,
-          onClearPendingPlay: provider.clearPendingPlay,
-          onClearPendingPause: provider.clearPendingPause,
-          onClearPendingSeek: provider.clearPendingSeek,
-        );
-      case MediaType.web:
-        return WebSyncWidget(
-          key: ValueKey('web-${source.url}'),
-          url: source.url,
-          pendingPlay: provider.pendingPlay,
-          pendingPause: provider.pendingPause,
-          pendingSeek: provider.pendingSeek,
-          onPlay: provider.onPlay,
-          onPause: provider.onPause,
-          onSeek: provider.onSeek,
-          onClearPendingPlay: provider.clearPendingPlay,
-          onClearPendingPause: provider.clearPendingPause,
-          onClearPendingSeek: provider.clearPendingSeek,
-        );
-      case MediaType.remote:
-        return RemoteSyncWidget(
-          key: ValueKey('remote-${source.title}'),
-          title: source.title,
-          pendingPlay: provider.pendingPlay,
-          pendingPause: provider.pendingPause,
-          pendingSeek: provider.pendingSeek,
-          onPlay: provider.onPlay,
-          onPause: provider.onPause,
-          onSeek: provider.onSeek,
-          onClearPendingPlay: provider.clearPendingPlay,
-          onClearPendingPause: provider.clearPendingPause,
-          onClearPendingSeek: provider.clearPendingSeek,
-        );
+    if (source.type == MediaType.remote) {
+      return RemoteSyncWidget(
+        key: ValueKey('remote-${source.title}'),
+        title: source.title,
+        pendingPlay: provider.pendingPlay,
+        pendingPause: provider.pendingPause,
+        pendingSeek: provider.pendingSeek,
+        onPlay: provider.onPlay,
+        onPause: provider.onPause,
+        onSeek: provider.onSeek,
+        onClearPendingPlay: provider.clearPendingPlay,
+        onClearPendingPause: provider.clearPendingPause,
+        onClearPendingSeek: provider.clearPendingSeek,
+      );
     }
+
+    return WebSyncWidget(
+      key: ValueKey('web-${source.url}'),
+      url: source.url,
+      pendingPlay: provider.pendingPlay,
+      pendingPause: provider.pendingPause,
+      pendingSeek: provider.pendingSeek,
+      onPlay: provider.onPlay,
+      onPause: provider.onPause,
+      onSeek: provider.onSeek,
+      onClearPendingPlay: provider.clearPendingPlay,
+      onClearPendingPause: provider.clearPendingPause,
+      onClearPendingSeek: provider.clearPendingSeek,
+    );
   }
 }

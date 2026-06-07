@@ -137,10 +137,9 @@ class AppProvider extends ChangeNotifier {
     _socket.setSource(source);
   }
 
-  void onPlay(double t)                      => _socket.play(t);
-  void onPause(double t)                     => _socket.pause(t);
-  void onSeek(double t)                      => _socket.seek(t);
-  void onTimeUpdate(double t, bool playing)  => _socket.sendTimeUpdate(t, playing);
+  void onPlay(double t)  => _socket.play(t);
+  void onPause(double t) => _socket.pause(t);
+  void onSeek(double t)  => _socket.seek(t);
 
   void clearPendingPlay()  { _pendingPlay  = null; notifyListeners(); }
   void clearPendingPause() { _pendingPause = null; notifyListeners(); }
