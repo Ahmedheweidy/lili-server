@@ -41,6 +41,31 @@ class WatchScreen extends StatelessWidget {
             // ── Source bar ────────────────────────────────
             _SourceBar(source: source, onTap: () => _pickSource(context)),
 
+            // ── Reconnecting banner ───────────────────────
+            if (provider.isReconnecting)
+              Container(
+                width: double.infinity,
+                color: const Color(0xFF2A1F00),
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SizedBox(
+                      width: 12, height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFFFD700),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Text(
+                      'جاري إعادة الاتصال...',
+                      style: TextStyle(color: Color(0xFFFFD700), fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+
             // ── Notification ──────────────────────────────
             if (provider.notification != null)
               _NotificationBanner(text: provider.notification!),

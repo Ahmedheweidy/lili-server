@@ -12,6 +12,10 @@ class SocketService {
       _socket = io.io(serverUrl, io.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
+          .enableReconnection()
+          .setReconnectionAttempts(99)
+          .setReconnectionDelay(2000)
+          .setReconnectionDelayMax(10000)
           .build());
       return true;
     } catch (_) {

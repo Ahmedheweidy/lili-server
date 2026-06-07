@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../services/history_service.dart';
@@ -38,11 +39,34 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
   final _urlController = TextEditingController();
   bool _loading = false;
 
+  // Known ad/tracker domains to block
+  static const _adHosts = {
+    'doubleclick.net', 'googlesyndication.com', 'adnxs.com',
+    'amazon-adsystem.com', 'exoclick.com', 'trafficjunky.net',
+    'popads.net', 'popcash.net', 'juicyads.com', 'hilltopads.net',
+    'plugrush.com', 'taboola.com', 'outbrain.com', 'mgid.com',
+    'revcontent.com', 'propellerads.com', 'adspyglass.com',
+    'adsafeprotected.com', 'moatads.com', 'rubiconproject.com',
+    'adtrue.com', 'ad-stir.com', 'adhese.com',
+  };
+
+  static bool _isAdHost(String url) {
+    try {
+      final host = Uri.parse(url).host;
+      return _adHosts.any((d) => host == d || host.endsWith('.$d'));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Injected on every page: video sync + anti-ad
   static const String _injectJs = '''
 (function(){
   if (window.__liliInit) return;
   window.__liliInit = true;
   window.__liliApplying = false;
+
+  // ── Video sync ────────────────────────────────
   function vid(){ return document.querySelector('video'); }
   function send(action){
     if (window.__liliApplying) return;
@@ -71,6 +95,26 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
     }catch(e){}
     setTimeout(function(){ window.__liliApplying = false; }, 800);
   };
+
+  // ── Ad blocking ───────────────────────────────
+  // Block popup windows
+  window.open = function() { return null; };
+
+  // Hide ad iframes by domain
+  var adCss = document.createElement('style');
+  adCss.textContent = [
+    'iframe[src*="doubleclick.net"]',
+    'iframe[src*="googlesyndication"]',
+    'iframe[src*="exoclick.com"]',
+    'iframe[src*="trafficjunky.net"]',
+    'iframe[src*="popcash.net"]',
+    'iframe[src*="popads.net"]',
+    'iframe[src*="taboola.com"]',
+    'iframe[src*="outbrain.com"]',
+    'iframe[src*="adnxs.com"]',
+    'iframe[src*="rubiconproject.com"]',
+  ].join(',') + '{display:none!important;width:0!important;height:0!important;}';
+  (document.head || document.documentElement).appendChild(adCss);
 })();
 ''';
 
@@ -125,7 +169,7 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // ── Browser nav bar ──────────────────────────────
+        // ── Nav bar ───────────────────────────────────────
         Container(
           color: AppTheme.nightSurface,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
@@ -171,7 +215,6 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
           ),
         ),
 
-        // ── Loading indicator ─────────────────────────────
         if (_loading)
           LinearProgressIndicator(
             minHeight: 2,
@@ -207,6 +250,29 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
                 },
               );
             },
+
+            // Block popup windows (most are ads)
+            onCreateWindow: (_, __) async => false,
+
+            // Block known ad domains at network level (Android)
+            shouldInterceptRequest: (controller, request) async {
+              if (_isAdHost(request.url.toString())) {
+                return WebResourceResponse(
+                  contentType: 'text/plain',
+                  data: Uint8List(0),
+                );
+              }
+              return null;
+            },
+
+            // Block navigation to ad domains
+            shouldOverrideUrlLoading: (controller, action) async {
+              if (_isAdHost(action.request.url.toString())) {
+                return NavigationActionPolicy.CANCEL;
+              }
+              return NavigationActionPolicy.ALLOW;
+            },
+
             onLoadStart: (_, __) => setState(() => _loading = true),
             onLoadStop: (controller, url) async {
               final urlStr = url?.toString() ?? '';
@@ -218,7 +284,7 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
               HistoryService.add(urlStr, title);
               await controller.evaluateJavascript(source: _injectJs);
             },
-            onLoadError: (_, __, ___, ____) => setState(() => _loading = false),
+            onReceivedError: (_, __, ___) => setState(() => _loading = false),
           ),
         ),
       ],

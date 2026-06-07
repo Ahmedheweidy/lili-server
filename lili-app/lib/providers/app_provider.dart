@@ -18,23 +18,25 @@ class AppProvider extends ChangeNotifier {
   MediaSource? _source;
   String? _notification;
   bool _connectionError = false;
+  bool _isReconnecting = false;
 
   double? _pendingPlay;
   double? _pendingPause;
   double? _pendingSeek;
 
-  AppScreen get screen          => _screen;
-  String    get username        => _username;
-  String    get serverUrl       => _serverUrl;
-  String    get roomId          => _roomId;
-  List<String> get connectedUsers => List.unmodifiable(_connectedUsers);
-  List<ChatMessage> get messages  => List.unmodifiable(_messages);
-  MediaSource? get source       => _source;
-  String?   get notification    => _notification;
-  bool      get connectionError => _connectionError;
-  double?   get pendingPlay     => _pendingPlay;
-  double?   get pendingPause    => _pendingPause;
-  double?   get pendingSeek     => _pendingSeek;
+  AppScreen get screen           => _screen;
+  String    get username         => _username;
+  String    get serverUrl        => _serverUrl;
+  String    get roomId           => _roomId;
+  List<String> get connectedUsers  => List.unmodifiable(_connectedUsers);
+  List<ChatMessage> get messages   => List.unmodifiable(_messages);
+  MediaSource? get source        => _source;
+  String?   get notification     => _notification;
+  bool      get connectionError  => _connectionError;
+  bool      get isReconnecting   => _isReconnecting;
+  double?   get pendingPlay      => _pendingPlay;
+  double?   get pendingPause     => _pendingPause;
+  double?   get pendingSeek      => _pendingSeek;
 
   void setUsername(String v) { _username = v; notifyListeners(); }
   void setServerUrl(String v) { _serverUrl = v; notifyListeners(); }
@@ -47,20 +49,26 @@ class AppProvider extends ChangeNotifier {
     }
 
     _socket.onConnect(() {
-      _screen = AppScreen.watch;
+      _isReconnecting = false;
       _connectionError = false;
+      _screen = AppScreen.watch;
       notifyListeners();
       _socket.join(_username, _roomId);
     });
 
     _socket.onConnectError(() {
-      _screen = AppScreen.join;
-      _connectionError = true;
-      notifyListeners();
+      if (_screen != AppScreen.watch) {
+        _screen = AppScreen.join;
+        _connectionError = true;
+        notifyListeners();
+      }
     });
 
+    // Unexpected disconnect → show reconnecting banner, stay on watch screen
+    // Socket.io will auto-reconnect, and onConnect will restore state
     _socket.onDisconnect(() {
-      _screen = AppScreen.join;
+      if (_screen == AppScreen.join) return; // manual disconnect, ignore
+      _isReconnecting = true;
       _connectedUsers = [];
       notifyListeners();
     });
@@ -75,7 +83,6 @@ class AppProvider extends ChangeNotifier {
 
     _socket.onSourceChanged((source) {
       _source = source;
-      // reset pending playback markers for the new media
       _pendingPlay = null;
       _pendingPause = null;
       _pendingSeek = null;
@@ -115,12 +122,14 @@ class AppProvider extends ChangeNotifier {
   }
 
   void disconnect() {
-    _socket.disconnect();
+    // Set join screen BEFORE disconnecting so onDisconnect sees it and skips reconnect
     _screen = AppScreen.join;
+    _isReconnecting = false;
     _connectedUsers = [];
     _messages = [];
     _source = null;
     notifyListeners();
+    _socket.disconnect();
   }
 
   void sendChatMessage(String text) {
