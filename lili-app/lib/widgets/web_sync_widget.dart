@@ -39,7 +39,7 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
   final _urlController = TextEditingController();
   bool _loading = false;
 
-  // Known ad/tracker domains to block
+  // Known ad/tracker/gambling domains
   static const _adHosts = {
     'doubleclick.net', 'googlesyndication.com', 'adnxs.com',
     'amazon-adsystem.com', 'exoclick.com', 'trafficjunky.net',
@@ -48,19 +48,38 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
     'revcontent.com', 'propellerads.com', 'adspyglass.com',
     'adsafeprotected.com', 'moatads.com', 'rubiconproject.com',
     'adtrue.com', 'ad-stir.com', 'adhese.com',
+    // Gambling/betting (common redirect targets from streaming sites)
+    'melbetegypt.com', 'melbet.com', '1xbet.com', '1xbetcj.com',
+    'mostbet.com', 'betwinner.com', 'linebet.com', 'parimatch.com',
+    'betway.com', 'bet365.com', 'pinup.com', 'pin-up.casino',
   };
+
+  // Gambling keywords that appear in hostnames
+  static const _gamblingKeywords = [
+    '1xbet', 'melbet', 'mostbet', 'linebet', 'betwinner',
+    'parimatch', 'pinup', 'pin-up', 'betway', 'spinbet',
+    'casino', 'gambling', 'slots', 'poker',
+  ];
 
   static bool _isAdHost(String url) {
     try {
-      final host = Uri.parse(url).host;
-      return _adHosts.any((d) => host == d || host.endsWith('.$d'));
+      final host = Uri.parse(url).host.toLowerCase();
+      if (_adHosts.any((d) => host == d || host.endsWith('.$d'))) return true;
+      if (_gamblingKeywords.any((kw) => host.contains(kw))) return true;
+      return false;
     } catch (_) {
       return false;
     }
   }
 
+  // Chrome Mobile UA — makes YouTube embeds and most sites work correctly
+  static const _chromeUA =
+      'Mozilla/5.0 (Linux; Android 13; Pixel 7) '
+      'AppleWebKit/537.36 (KHTML, like Gecko) '
+      'Chrome/124.0.0.0 Mobile Safari/537.36';
+
   // Injected on every page: video sync + anti-ad
-  static const String _injectJs = '''
+  static const String _injectJs = r'''
 (function(){
   if (window.__liliInit) return;
   window.__liliInit = true;
@@ -96,25 +115,52 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
     setTimeout(function(){ window.__liliApplying = false; }, 800);
   };
 
-  // ── Ad blocking ───────────────────────────────
+  // ── Ad / redirect blocking ────────────────────
   // Block popup windows
   window.open = function() { return null; };
 
-  // Hide ad iframes by domain
+  // Block JS redirects to gambling/ad sites
+  var _allowedHost = location.hostname;
+  var _badKw = ['melbet','1xbet','mostbet','casino','bet365','betway',
+                'linebet','betwinner','parimatch','pinup','gambling','slots'];
+  var _origAssign = location.assign.bind(location);
+  var _origReplace = location.replace.bind(location);
+  function _isBad(url){
+    try{
+      var h = new URL(url, location.href).hostname.toLowerCase();
+      return _badKw.some(function(k){ return h.indexOf(k) !== -1; });
+    }catch(e){ return false; }
+  }
+  location.assign  = function(u){ if(!_isBad(u)) _origAssign(u); };
+  location.replace = function(u){ if(!_isBad(u)) _origReplace(u); };
+  try{
+    Object.defineProperty(location, 'href', {
+      set: function(u){ if(!_isBad(u)) _origAssign(u); }
+    });
+  }catch(e){}
+
+  // Hide ad iframes + remove overlay ads periodically
   var adCss = document.createElement('style');
-  adCss.textContent = [
-    'iframe[src*="doubleclick.net"]',
-    'iframe[src*="googlesyndication"]',
-    'iframe[src*="exoclick.com"]',
-    'iframe[src*="trafficjunky.net"]',
-    'iframe[src*="popcash.net"]',
-    'iframe[src*="popads.net"]',
-    'iframe[src*="taboola.com"]',
-    'iframe[src*="outbrain.com"]',
-    'iframe[src*="adnxs.com"]',
-    'iframe[src*="rubiconproject.com"]',
-  ].join(',') + '{display:none!important;width:0!important;height:0!important;}';
+  adCss.textContent =
+    'iframe[src*="doubleclick.net"],iframe[src*="googlesyndication"],' +
+    'iframe[src*="exoclick.com"],iframe[src*="trafficjunky.net"],' +
+    'iframe[src*="popcash.net"],iframe[src*="popads.net"],' +
+    'iframe[src*="taboola.com"],iframe[src*="outbrain.com"],' +
+    'iframe[src*="adnxs.com"],iframe[src*="rubiconproject.com"],' +
+    'iframe[src*="melbet"],iframe[src*="1xbet"],iframe[src*="mostbet"]' +
+    '{display:none!important;width:0!important;height:0!important;}';
   (document.head || document.documentElement).appendChild(adCss);
+
+  // Periodically remove overlay/popup ad elements
+  setInterval(function(){
+    var sel = '[class*="bonus"],[class*="promo-pop"],[id*="bonus"],' +
+              '[class*="popup-ad"],[class*="ad-popup"],[class*="ad-overlay"],' +
+              '[class*="bet-popup"],[id*="casino"],[class*="winpop"]';
+    document.querySelectorAll(sel).forEach(function(el){
+      var st = window.getComputedStyle(el);
+      if(st.position === 'fixed' || st.position === 'absolute') el.remove();
+    });
+  }, 1500);
 })();
 ''';
 
@@ -231,6 +277,7 @@ class _WebSyncWidgetState extends State<WebSyncWidget> {
               mediaPlaybackRequiresUserGesture: false,
               allowsInlineMediaPlayback: true,
               useHybridComposition: true,
+              userAgent: _chromeUA,
             ),
             onWebViewCreated: (controller) {
               _controller = controller;
