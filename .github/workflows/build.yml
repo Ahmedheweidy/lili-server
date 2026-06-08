@@ -61,6 +61,10 @@ jobs:
         working-directory: lili-app
         run: flutter pub get
 
+      - name: Generate app icon
+        working-directory: lili-app
+        run: dart run flutter_launcher_icons
+
       - name: Build APK
         working-directory: lili-app
         run: flutter build apk --release --split-per-abi --no-tree-shake-icons
