@@ -2,9 +2,10 @@ name: Build Flutter APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     paths:
       - 'lili-app/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
@@ -25,13 +26,44 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.27.4'
           channel: stable
           cache: true
+
+      - name: Generate Android platform files
+        working-directory: lili-app
+        run: flutter create --platforms=android --org com.lili --project-name lili_watch .
+
+      - name: Configure Android manifest
+        working-directory: lili-app
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          # Add INTERNET permission (release manifest lacks it by default)
+          sed -i 's#<manifest xmlns:android="http://schemas.android.com/apk/res/android">#<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>#' "$MANIFEST"
+          # Set app label
+          sed -i 's#android:label="[^"]*"#android:label="Lili Watch"#' "$MANIFEST"
+          # Allow cleartext traffic (for optional local http server testing)
+          sed -i 's#<application#<application android:usesCleartextTraffic="true"#' "$MANIFEST"
+          echo "----- Final AndroidManifest.xml -----"
+          cat "$MANIFEST"
+
+      - name: Fix Gradle wrapper URL
+        working-directory: lili-app
+        run: |
+          WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
+          # Flutter 3.27 sometimes generates a GitHub-hosted URL that fails in CI.
+          # Replace with the official Gradle distribution server.
+          sed -i 's|https://github.com/gradle/gradle-distributions/releases/download/[^/]*/gradle-\([^-]*\)-|https://services.gradle.org/distributions/gradle-\1-|g' "$WRAPPER"
+          echo "--- gradle-wrapper.properties ---"
+          cat "$WRAPPER"
 
       - name: Get dependencies
         working-directory: lili-app
         run: flutter pub get
+
+      - name: Generate app icon
+        working-directory: lili-app
+        run: dart run flutter_launcher_icons
 
       - name: Build APK
         working-directory: lili-app
@@ -41,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lili-watch-apk
-          path: lili-app/build/outputs/flutter-apk/app-release.apk
+          path: lili-app/build/app/outputs/flutter-apk/app-release.apk
           retention-days: 30
