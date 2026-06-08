@@ -47,6 +47,16 @@ jobs:
           echo "----- Final AndroidManifest.xml -----"
           cat "$MANIFEST"
 
+      - name: Fix Gradle wrapper URL
+        working-directory: lili-app
+        run: |
+          WRAPPER=android/gradle/wrapper/gradle-wrapper.properties
+          # Flutter 3.27 sometimes generates a GitHub-hosted URL that fails in CI.
+          # Replace with the official Gradle distribution server.
+          sed -i 's|https://github.com/gradle/gradle-distributions/releases/download/[^/]*/gradle-\([^-]*\)-|https://services.gradle.org/distributions/gradle-\1-|g' "$WRAPPER"
+          echo "--- gradle-wrapper.properties ---"
+          cat "$WRAPPER"
+
       - name: Get dependencies
         working-directory: lili-app
         run: flutter pub get
