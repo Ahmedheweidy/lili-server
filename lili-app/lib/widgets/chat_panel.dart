@@ -118,12 +118,7 @@ class _ChatPanelState extends State<ChatPanel> {
 
         // Input bar
         Container(
-          padding: EdgeInsets.only(
-            left: 12,
-            right: 12,
-            top: 8,
-            bottom: 8 + MediaQuery.of(context).viewInsets.bottom,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: const BoxDecoration(
             color: AppTheme.nightSurface,
             border: Border(top: BorderSide(color: Color(0xFF2A1A3A))),

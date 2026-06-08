@@ -24,7 +24,7 @@ class WatchScreen extends StatelessWidget {
     final isBrowser = source == null || source.type == MediaType.web;
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       backgroundColor: AppTheme.deepNight,
       body: SafeArea(
         child: Column(
